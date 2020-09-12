@@ -1,0 +1,8 @@
+#!/usr/bin/env zsh
+file=$(echo "$1" | sed 's/file:\/\///')
+echo "file: ${file}"
+url=$(grep -oP 'href="\K([^"]*localhost[^"]+)' "$file")
+echo "URL to be use: ${url}"
+#chrome "$url"
+#chrome ${1}
+open -a 'Google Chrome' $1

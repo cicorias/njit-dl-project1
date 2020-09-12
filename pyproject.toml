@@ -10,6 +10,7 @@ python = "^3.8"
 torch = "1.6.0"
 torchvision = "^0.7.0"
 tensorflow = "^2.3.0"
+jupyterlab = "^2.2.7"
 
 [tool.poetry.dev-dependencies]
 
