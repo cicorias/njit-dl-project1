@@ -41,6 +41,7 @@ def train_ewc(model, device, task_id, x_train, y_train, optimizer, epoch):
     """
     pass
 
+# Continuous learning via Rehearsal 
 def taskset_with_replay(scenario, task_id, train_taskset, proportion):
     replay_examples = {
         'x': np.array([], dtype='<U49'),
@@ -48,12 +49,13 @@ def taskset_with_replay(scenario, task_id, train_taskset, proportion):
         't': np.array([], dtype='int64')
     }
 
+    # Grab new random replay examples from each of the previous tasks
     for prev_id, prev_taskset in enumerate(scenario):
         if prev_id == task_id:
             break
 
         sz = round(len(prev_taskset) * proportion)
-        # Grab new replay examples
+
         replay_examples['x'] = np.append(
             replay_examples['x'], np.random.choice(prev_taskset._x, size=sz, replace=False)
         )
@@ -64,7 +66,7 @@ def taskset_with_replay(scenario, task_id, train_taskset, proportion):
             replay_examples['t'], np.random.choice(prev_taskset._t, size=sz, replace=False)
         )
 
-        # Add replay examples
+        # Add replay examples to current taskset
         train_taskset._x = np.append(train_taskset._x, replay_examples['x'])
         train_taskset._y = np.append(train_taskset._y, replay_examples['y'])
         train_taskset._t = np.append(train_taskset._t, replay_examples['t'])
@@ -88,7 +90,7 @@ def main(args):
     core50 = Core50("core50/data/", train=True, download=False)
     core50_val = Core50("core50/data", train=False, download=False)
 
-    # A new classes scenario
+    # A new classes scenario, using continuum
     scenario = ClassIncremental(
         core50,
         increment=5,
@@ -127,7 +129,7 @@ def main(args):
     convergence_criterion = args.convergence_criterion # 0.004  # End early if loss is less than this
     lr = args.lr  # 0.00001
     weight_decay = args.weight_decay # 0.000001
-    momentum = args.momentum # 0.9 #  TODO: not used currently
+    momentum = args.momentum # 0.9
 
     # Define a loss function and criterion
     criterion = nn.CrossEntropyLoss()
@@ -140,13 +142,8 @@ def main(args):
     print2("Criterion: " + str(criterion))
     print2("Optimizer: " + str(optimizer))
 
-    # Naive_acc
-    naive_accs = []
-    # replay_examples = {
-    #     'x': np.array([], dtype='<U49'),
-    #     'y': np.array([], dtype='int64'),
-    #     't': np.array([], dtype='int64')
-    # }
+    # Validation accuracies
+    accuracies = []
 
     # Iterate through our NC scenario
     for task_id, train_taskset in enumerate(scenario):
@@ -239,21 +236,18 @@ def main(args):
             cum_accuracy += (correct / total)
         
         print2(f"Average Accuracy: {cum_accuracy / 9}")
-        naive_accs.append((cum_accuracy / 9))   
+        accuracies.append((cum_accuracy / 9))   
         print2(f"Average Accuracy: {100.0 * cum_accuracy / 9.0}%")
 
         classifier.train()
     
     # Running Time
-
     print2("--- %s seconds ---" % (time.time() - start_time))
 
     # TO DO Add EWC Training
 
-    # Plot
-
-    
-    plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], naive_accs, '-o', label="Rehersal")
+    # Some plots over time
+    plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], accuracies, '-o', label="Naive")
     #plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], rehe_accs, '-o', label="Rehearsal")
     #plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], ewc_accs, '-o', label="EWC")
     plt.xlabel('Tasks Encountered', fontsize=14)
@@ -268,11 +262,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser('Ted David Shawn - NJIT')
 
-    # General
-    # parser.add_argument('--scenario', type=str, default="multi-task-nc",
-    #                     choices=['ni', 'multi-task-nc', 'nic'])
-    # parser.add_argument('--preload_data', type=bool, default=True,
-    #                     help='preload data into RAM')
+    ### Use these command line args to set parameters for the model ###
 
     # Model
     parser.add_argument('-cls', '--classifier', type=str, default='resnet18',
@@ -302,25 +292,11 @@ if __name__ == "__main__":
     import datetime
     temp_out_file = datetime.datetime.now().strftime('./%Y_%m_%d-%H_%M_%S') + '.txt'
     parser.add_argument('--outfile', type=str, default=temp_out_file)
-           
-
-# TODO: fix these as parms.
-# add and replace
-#     max_epochs = 8
-#     convergence_criterion = 0.004  # End early if loss is less than this
-#     lr = 0.00001
-#     weight_decay = 0.000001
-#     momentum = 0.9 #  TODO: not used currently
-
-    # Continual Learning
-    # parser.add_argument('--replay_examples', type=int, default=0,
-    #                     help='data examples to keep in memory for each batch '
-    #                          'for replay.')
 
     args = parser.parse_args()
     
+    # Core 50 uses 50 classes
     args.n_classes = 50
-    #args.input_size = [3, 128, 128]
 
     args.cuda = torch.cuda.is_available()
     args.device = 'cuda:0' if args.cuda else 'cpu'
