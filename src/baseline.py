@@ -55,7 +55,6 @@ def taskset_with_replay(scenario, task_id, train_taskset, proportion):
             break
 
         sz = round(len(prev_taskset) * proportion)
-
         replay_examples['x'] = np.append(
             replay_examples['x'], np.random.choice(prev_taskset._x, size=sz, replace=False)
         )
