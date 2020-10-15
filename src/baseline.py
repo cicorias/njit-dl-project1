@@ -35,6 +35,54 @@ def on_task_update(task_id, x_mem, y_mem):
     """
     pass
 
+def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion):
+    def print2(parms, *aargs, **kwargs):
+        redirect(parms, path=args.outfile, *aargs, **kwargs)
+
+    # End early criterion
+    last_avg_running_loss = convergence_criterion #  TODO: not used currently
+    did_converge = False
+
+    for epoch in range(max_epochs):
+
+        # End if the loss has converged to criterion
+        if did_converge:
+            break
+            
+        print2(f"<------ Epoch {epoch + 1} ------->")
+
+        running_loss = 0.0
+        train_total = 0.0
+        train_correct = 0.0 
+        for i, (x, y, t) in enumerate(train_loader):
+
+            # Outputs batches of data, one scenario at a time
+            x, y = x.cuda(), y.cuda()
+            outputs = classifier(x)
+            loss = criterion(outputs, y)
+            loss.backward()
+            optimizer.step()
+
+            # print training statistics
+            running_loss += loss.item()
+            train_total += y.size(0)
+            _, train_predicted = torch.max(outputs.data, 1)
+            train_correct += (train_predicted == y).sum().item()
+            
+            if i % 100 == 99:
+                avg_running_loss = running_loss / 3200
+                print2(f'[Mini-batch {i + 1}] avg loss: {avg_running_loss:.5f}')
+                # End early criterion
+                if avg_running_loss < convergence_criterion:
+                    did_converge = True
+                    break
+                last_avg_running_loss = avg_running_loss
+                running_loss = 0.0
+                        
+        print2(f"Training accuracy: {100.0 * train_correct / train_total}%")
+    return
+
+
 def train_ewc(model, device, task_id, x_train, y_train, optimizer, epoch):
     """
     EWC Trainer
@@ -159,47 +207,8 @@ def main(args):
         print2(f"This task contains {len(unq_cls_train)} unique classes")
         print2(f"Training classes: {unq_cls_train}")
 
-        # End early criterion
-        last_avg_running_loss = convergence_criterion #  TODO: not used currently
-        did_converge = False
-
-        for epoch in range(max_epochs):
-
-            # End if the loss has converged to criterion
-            if did_converge:
-                break
-
-            print2(f"<------ Epoch {epoch + 1} ------->")
-
-            running_loss = 0.0
-            train_total = 0.0
-            train_correct = 0.0 
-            for i, (x, y, t) in enumerate(train_loader):
-
-                # Outputs batches of data, one scenario at a time
-                x, y = x.cuda(), y.cuda()
-                outputs = classifier(x)
-                loss = criterion(outputs, y)
-                loss.backward()
-                optimizer.step()
-
-                # print training statistics
-                running_loss += loss.item()
-                train_total += y.size(0)
-                _, train_predicted = torch.max(outputs.data, 1)
-                train_correct += (train_predicted == y).sum().item()
-                
-                if i % 100 == 99:
-                    avg_running_loss = running_loss / 3200
-                    print2(f'[Mini-batch {i + 1}] avg loss: {avg_running_loss:.5f}')
-                    # End early criterion
-                    if avg_running_loss < convergence_criterion:
-                        did_converge = True
-                        break
-                    last_avg_running_loss = avg_running_loss
-                    running_loss = 0.0
-                          
-            print2(f"Training accuracy: {100.0 * train_correct / train_total}%")                 
+        # Train the model
+        train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
 
         print2("Finished Training")
         classifier.eval()
