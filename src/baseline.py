@@ -4,6 +4,7 @@
 import os
 import sys
 from contextlib import redirect_stdout
+from copy import deepcopy
 
 import argparse
 import matplotlib.pyplot as plt
@@ -16,11 +17,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.models as models
+from torch.autograd import Variable
 
 from continuum import ClassIncremental
 from continuum.datasets import Core50
 from continuum.tasks import split_train_val
 from torchvision.transforms.transforms import Normalize, ToTensor
+
 
 def redirect(text, path='./out.txt', *args, **kwargs):
     # first send to normal stdout.
@@ -83,11 +86,108 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
     return
 
 
-def train_ewc(model, device, task_id, x_train, y_train, optimizer, epoch):
-    """
-    EWC Trainer
-    """
-    pass
+###### EWC Stuff ######
+
+def variable(t: torch.Tensor, use_cuda=True, **kwargs):
+    if torch.cuda.is_available() and use_cuda:
+        t = t.cuda()
+    return Variable(t, **kwargs)
+
+
+class EWC(object):
+    def __init__(self, model: nn.Module, dataset):
+
+        self.model = model
+        self.dataset = dataset
+
+        self.params = {n: p for n, p in self.model.named_parameters() if p.requires_grad}
+        self._means = {}
+        self._precision_matrices = self._diag_fisher()
+
+        for n, p in deepcopy(self.params).items():
+            self._means[n] = variable(p.data)
+
+    def _diag_fisher(self):
+        precision_matrices = {}
+        for n, p in deepcopy(self.params).items():
+            p.data.zero_()
+            precision_matrices[n] = variable(p.data)
+
+        self.model.eval()
+
+        ewc_loader = DataLoader(self.dataset, batch_size=1, shuffle=True)
+
+        for i, (x, y, t) in enumerate(ewc_loader):
+            x, y = x.cuda(), y.cuda()
+            outputs = self.model(x)
+            _, train_predicted = torch.max(outputs.data, 1)
+            loss = nn.functional.nll_loss(nn.functional.log_softmax(outputs, dim=1), train_predicted)
+            loss.backward()
+
+            for n, p in self.model.named_parameters():
+                precision_matrices[n].data += p.grad.data ** 2 / len(self.dataset._y)
+
+        precision_matrices = {n: p for n, p in precision_matrices.items()}
+        return precision_matrices
+
+    def penalty(self, model: nn.Module):
+        loss = 0
+        for n, p in model.named_parameters():
+            _loss = self._precision_matrices[n] * (p - self._means[n]) ** 2
+            loss += _loss.sum()
+        return loss
+
+
+def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, optimizer, max_epochs, convergence_criterion):
+    def print2(parms, *aargs, **kwargs):
+        redirect(parms, path=args.outfile, *aargs, **kwargs)
+
+    print2("Training with EWC")
+
+    # End early criterion
+    last_avg_running_loss = convergence_criterion #  TODO: not used currently
+    did_converge = False
+
+    for epoch in range(max_epochs):
+
+        # End if the loss has converged to criterion
+        if did_converge:
+            break
+            
+        print2(f"<------ Epoch {epoch + 1} ------->")
+
+        running_loss = 0.0
+        train_total = 0.0
+        train_correct = 0.0 
+        for i, (x, y, t) in enumerate(train_loader):
+
+            # Outputs batches of data, one scenario at a time
+            x, y = x.cuda(), y.cuda()
+            outputs = classifier(x)
+            loss = criterion(outputs, y) + importance * ewc.penalty(classifier)
+            loss.backward()
+            optimizer.step()
+
+            # print training statistics
+            running_loss += loss.item()
+            train_total += y.size(0)
+            _, train_predicted = torch.max(outputs.data, 1)
+            train_correct += (train_predicted == y).sum().item()
+            
+            if i % 100 == 99:
+                avg_running_loss = running_loss / 3200
+                print2(f'[Mini-batch {i + 1}] avg loss: {avg_running_loss:.5f}')
+                # End early criterion
+                if avg_running_loss < convergence_criterion:
+                    did_converge = True
+                    break
+                last_avg_running_loss = avg_running_loss
+                running_loss = 0.0
+                        
+        print2(f"Training accuracy: {100.0 * train_correct / train_total}%")
+    return
+
+###### END EWC STUFF ########
 
 # Continuous learning via Rehearsal 
 def taskset_with_replay(scenario, task_id, train_taskset, proportion):
@@ -124,7 +224,6 @@ def taskset_with_replay(scenario, task_id, train_taskset, proportion):
 def main(args):
     def print2(parms, *aargs, **kwargs):
         redirect(parms, path=args.outfile, *aargs, **kwargs)
-    
 
     start_time = time.time()
 
@@ -192,6 +291,9 @@ def main(args):
     # Validation accuracies
     accuracies = []
 
+    # Prepare model for training
+    classifier.train()
+
     # Iterate through our NC scenario
     for task_id, train_taskset in enumerate(scenario):
 
@@ -208,7 +310,20 @@ def main(args):
         print2(f"Training classes: {unq_cls_train}")
 
         # Train the model
-        train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
+        if args.importance:
+            # EWC
+            if task_id == 0:
+                train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
+            else:
+                old_tasks = []
+                for prev_id, prev_taskset in enumerate(scenario):
+                    if prev_id == task_id:
+                        break
+                    else:
+                        old_tasks = old_tasks + list(prev_taskset._x)
+                train_ewc(classifier, task_id, train_taskset, criterion, EWC(classifier, old_tasks), args.importance, optimizer, max_epochs, convergence_criterion)
+        else:
+            train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
 
         print2("Finished Training")
         classifier.eval()
@@ -247,7 +362,7 @@ def main(args):
         accuracies.append((cum_accuracy / 9))   
         print2(f"Average Accuracy: {100.0 * cum_accuracy / 9.0}%")
 
-        classifier.train()
+        
     
     # Running Time
     print2("--- %s seconds ---" % (time.time() - start_time))
@@ -283,7 +398,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=32,
                         help='batch_size')
 
-    parser.add_argument('--epochs', type=int, default=4,
+    parser.add_argument('--epochs', type=int, default=1,
                         help='number of epochs')
 
     parser.add_argument('--weight_decay', type=float, default=0.000001,
@@ -296,6 +411,8 @@ if __name__ == "__main__":
                         help='momentum')
 
     parser.add_argument('--replay', type=float, default=0.15, help='proportion of training to replay')
+
+    parser.add_argument('--importance', type=int, default=100, help='EWC importance criterion')
 
     import datetime
     temp_out_file = datetime.datetime.now().strftime('./%Y_%m_%d-%H_%M_%S') + '.txt'
