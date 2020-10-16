@@ -86,6 +86,7 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
     return
 
 
+<<<<<<< HEAD
 ###### EWC Stuff ######
 
 def variable(t: torch.Tensor, use_cuda=True, **kwargs):
@@ -202,6 +203,16 @@ def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, opt
 
 # Continuous learning via Rehearsal 
 def taskset_with_replay(scenario, task_id, proportion):
+=======
+def train_ewc(model, device, task_id, x_train, y_train, optimizer, epoch):
+    """
+    EWC Trainer
+    """
+    pass
+
+# Continuous learning via Rehearsal 
+def taskset_with_replay(scenario, task_id, train_taskset, proportion):
+>>>>>>> 75c805e6f70dc6f2843d1c5b8e8a94e1d8659795
     replay_examples = {
         'x': np.array([], dtype='<U49'),
         'y': np.array([], dtype='int64'),
@@ -224,7 +235,16 @@ def taskset_with_replay(scenario, task_id, proportion):
             replay_examples['t'], np.random.choice(prev_taskset._t, size=sz, replace=False)
         )
 
+<<<<<<< HEAD
     return replay_examples
+=======
+        # Add replay examples to current taskset
+        train_taskset._x = np.append(train_taskset._x, replay_examples['x'])
+        train_taskset._y = np.append(train_taskset._y, replay_examples['y'])
+        train_taskset._t = np.append(train_taskset._t, replay_examples['t'])
+
+    return train_taskset
+>>>>>>> 75c805e6f70dc6f2843d1c5b8e8a94e1d8659795
 
 
 def main(args):
@@ -318,6 +338,7 @@ def main(args):
         print2(f"Training classes: {unq_cls_train}")
 
         # Train the model
+<<<<<<< HEAD
         classifier.train()
         if args.importance:
             # EWC
@@ -333,6 +354,9 @@ def main(args):
                 train_ewc(classifier, task_id, train_loader, criterion, EWC(classifier, train_taskset, scenario, task_id), args.importance, optimizer, max_epochs, convergence_criterion)
         else:
             train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
+=======
+        train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
+>>>>>>> 75c805e6f70dc6f2843d1c5b8e8a94e1d8659795
 
         print2("Finished Training")
         classifier.eval()
