@@ -321,7 +321,7 @@ def main(args):
                         break
                     else:
                         old_tasks = old_tasks + list(prev_taskset._x)
-                train_ewc(classifier, task_id, train_taskset, criterion, EWC(classifier, old_tasks), args.importance, optimizer, max_epochs, convergence_criterion)
+                train_ewc(classifier, task_id, train_loader, criterion, EWC(classifier, train_taskset), args.importance, optimizer, max_epochs, convergence_criterion)
         else:
             train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
 
