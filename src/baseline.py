@@ -95,10 +95,12 @@ def variable(t: torch.Tensor, use_cuda=True, **kwargs):
 
 
 class EWC(object):
-    def __init__(self, model: nn.Module, dataset):
+    def __init__(self, model: nn.Module, dataset, scenario, task_id):
 
         self.model = model
-        self.dataset = dataset
+        self.dataset = deepcopy(dataset)
+        self.scenario = scenario
+        self.task_id = task_id
 
         self.params = {n: p for n, p in self.model.named_parameters() if p.requires_grad}
         self._means = {}
@@ -114,6 +116,13 @@ class EWC(object):
             precision_matrices[n] = variable(p.data)
 
         self.model.eval()
+
+        replay_examples = taskset_with_replay(self.scenario, self.task_id, 0.1)
+
+        # overwrite taskset examples with previously seen examples
+        self.dataset._x = replay_examples['x']
+        self.dataset._y = replay_examples['y']
+        self.dataset._t = replay_examples['t']
 
         ewc_loader = DataLoader(self.dataset, batch_size=1, shuffle=True)
 
@@ -132,10 +141,12 @@ class EWC(object):
 
     def penalty(self, model: nn.Module):
         loss = 0
+        num_params = 0
         for n, p in model.named_parameters():
             _loss = self._precision_matrices[n] * (p - self._means[n]) ** 2
             loss += _loss.sum()
-        return loss
+            num_params += 1
+        return loss / num_params
 
 
 def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, optimizer, max_epochs, convergence_criterion):
@@ -190,7 +201,7 @@ def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, opt
 ###### END EWC STUFF ########
 
 # Continuous learning via Rehearsal 
-def taskset_with_replay(scenario, task_id, train_taskset, proportion):
+def taskset_with_replay(scenario, task_id, proportion):
     replay_examples = {
         'x': np.array([], dtype='<U49'),
         'y': np.array([], dtype='int64'),
@@ -213,12 +224,7 @@ def taskset_with_replay(scenario, task_id, train_taskset, proportion):
             replay_examples['t'], np.random.choice(prev_taskset._t, size=sz, replace=False)
         )
 
-        # Add replay examples to current taskset
-        train_taskset._x = np.append(train_taskset._x, replay_examples['x'])
-        train_taskset._y = np.append(train_taskset._y, replay_examples['y'])
-        train_taskset._t = np.append(train_taskset._t, replay_examples['t'])
-
-    return train_taskset
+    return replay_examples
 
 
 def main(args):
@@ -291,9 +297,6 @@ def main(args):
     # Validation accuracies
     accuracies = []
 
-    # Prepare model for training
-    classifier.train()
-
     # Iterate through our NC scenario
     for task_id, train_taskset in enumerate(scenario):
 
@@ -301,7 +304,12 @@ def main(args):
 
         # Use replay if it's specified
         if args.replay:
-            train_taskset = taskset_with_replay(scenario, task_id, train_taskset, args.replay)
+
+            # Add replay examples to current taskset
+            replay_examples = taskset_with_replay(scenario, task_id, args.replay)
+            train_taskset._x = np.append(train_taskset._x, replay_examples['x'])
+            train_taskset._y = np.append(train_taskset._y, replay_examples['y'])
+            train_taskset._t = np.append(train_taskset._t, replay_examples['t'])
 
         train_loader = DataLoader(train_taskset, batch_size=32, shuffle=True)
         unq_cls_train = np.unique(train_taskset._y)
@@ -310,6 +318,7 @@ def main(args):
         print2(f"Training classes: {unq_cls_train}")
 
         # Train the model
+        classifier.train()
         if args.importance:
             # EWC
             if task_id == 0:
@@ -321,7 +330,7 @@ def main(args):
                         break
                     else:
                         old_tasks = old_tasks + list(prev_taskset._x)
-                train_ewc(classifier, task_id, train_loader, criterion, EWC(classifier, train_taskset), args.importance, optimizer, max_epochs, convergence_criterion)
+                train_ewc(classifier, task_id, train_loader, criterion, EWC(classifier, train_taskset, scenario, task_id), args.importance, optimizer, max_epochs, convergence_criterion)
         else:
             train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
 
