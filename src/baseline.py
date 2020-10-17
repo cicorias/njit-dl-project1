@@ -277,6 +277,10 @@ def main(args):
     elif args.classifier == 'resnet101':
         classifier = models.resnet101(pretrained=True)
         classifier.fc = nn.Linear(2048, args.n_classes)
+
+    elif args.classifier == 'resnet34':
+        classifier = models.resnet34(pretrained=True)
+        classifier.fc = nn.Linear(512, args.n_classes)
     
     else:
         raise Exception('no classifier picked')
@@ -411,7 +415,7 @@ if __name__ == "__main__":
 
     # Model
     parser.add_argument('-cls', '--classifier', type=str, default='resnet18',
-                        choices=['resnet18', 'resnet101'])
+                        choices=['resnet18', 'resnet101', 'resnet34'])
 
     # Optimization
     parser.add_argument('--lr', type=float, default=0.00001,
