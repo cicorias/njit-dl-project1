@@ -50,6 +50,7 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
 
         # End if the loss has converged to criterion
         if did_converge:
+            print2(f'loss has converged to criterion ending: Epoch {epoch +1}')
             break
             
         print2(f"<------ Epoch {epoch + 1} ------->")
@@ -78,11 +79,12 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
                 # End early criterion
                 if avg_running_loss < convergence_criterion:
                     did_converge = True
+                    print2(f'!!! avg_running_loss < convergence_criterion - ending: Epoch {epoch +1}')
                     break
                 last_avg_running_loss = avg_running_loss
                 running_loss = 0.0
                         
-        print2(f"Training accuracy: {100.0 * train_correct / train_total}%")
+        print2(f"Training accuracy: {100.0 * train_correct / train_total:.5f}%")
     return
 
 
@@ -153,7 +155,7 @@ def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, opt
     def print2(parms, *aargs, **kwargs):
         redirect(parms, path=args.outfile, *aargs, **kwargs)
 
-    print2("Training with EWC")
+    print2("=== Training with EWC ===")
 
     # End early criterion
     last_avg_running_loss = convergence_criterion #  TODO: not used currently
@@ -163,6 +165,7 @@ def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, opt
 
         # End if the loss has converged to criterion
         if did_converge:
+            print2(f'loss has converged to criterion ending: Epoch {epoch +1}')
             break
             
         print2(f"<------ Epoch {epoch + 1} ------->")
@@ -191,11 +194,12 @@ def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, opt
                 # End early criterion
                 if avg_running_loss < convergence_criterion:
                     did_converge = True
+                    print2(f'!!! avg_running_loss < convergence_criterion - ending: Epoch {epoch +1}')
                     break
                 last_avg_running_loss = avg_running_loss
                 running_loss = 0.0
                         
-        print2(f"Training accuracy: {100.0 * train_correct / train_total}%")
+        print2(f"Training accuracy: {100.0 * train_correct / train_total:.5f}%")
     return
 
 ###### END EWC STUFF ########
@@ -256,12 +260,14 @@ def main(args):
         core50,
         increment=5,
         initial_increment=10,
+        # following values come from the the mean and std of ImageNet - the basis of resnet.
         transformations=[ ToTensor(), Normalize([0.485, 0.456, 0.406],[0.229, 0.224, 0.225])]
     )
     scenario_val = ClassIncremental(
         core50_val,
         increment=5,
         initial_increment=10,
+        # following values come from the the mean and std of ImageNet - the basis of resnet.
         transformations=[ ToTensor(), Normalize([0.485, 0.456, 0.406],[0.229, 0.224, 0.225])]
     )
 
@@ -347,7 +353,7 @@ def main(args):
         else:
             train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
 
-        print2("Finished Training")
+        print2("=== Finished Training ===")
         classifier.eval()
 
         # Validate against separate validation data
@@ -377,12 +383,13 @@ def main(args):
                     correct += (predicted == y).sum().item()
             
             print2(f"Classes predicted: {pred_classes}")
-            print2(f"Validation Accuracy: {100.0 * correct / total}%")
+            print2(f"=== Validation Accuracy: {100.0 * correct / total}%\n")
             cum_accuracy += (correct / total)
         
-        print2(f"Average Accuracy: {cum_accuracy / 9}")
+        avg_accuracy = cum_accuracy / 9
+        print2(f"Average Accuracy: {100.0 * avg_accuracy:.5f}%  [{avg_accuracy:.5f}]")
         accuracies.append((cum_accuracy / 9))   
-        print2(f"Average Accuracy: {100.0 * cum_accuracy / 9.0}%")
+        # print2(f"Average Accuracy: {100.0 * cum_accuracy / 9.0}%")
 
         
     
