@@ -142,5 +142,5 @@ cython_debug/
 core50/data
 
 
-# no stdout files unless needed
+# no stdout files unless needed 
 2020_10*.txt
