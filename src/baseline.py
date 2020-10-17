@@ -297,6 +297,10 @@ def main(args):
     if torch.cuda.is_available():
         classifier.cuda()
 
+    if torch.cuda.device_count() > 1:
+        print2(f"Let's use {torch.cuda.device_count()} GPUs!")
+        classifier = nn.DataParallel(classifier)
+
     # Tune the model hyperparameters
     max_epochs = args.epochs # 8
     convergence_criterion = args.convergence_criterion # 0.004  # End early if loss is less than this
