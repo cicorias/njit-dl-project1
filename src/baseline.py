@@ -297,9 +297,10 @@ def main(args):
     if torch.cuda.is_available():
         classifier.cuda()
 
-    if torch.cuda.device_count() > 1:
-        print2(f"Let's use {torch.cuda.device_count()} GPUs!")
-        classifier = nn.DataParallel(classifier)
+    # TODO: fix device specific cuda usage to we can parallel 
+    # if torch.cuda.device_count() > 1:
+    #     print2(f"Let's use {torch.cuda.device_count()} GPUs!")
+    #     classifier = nn.DataParallel(classifier)
 
     # Tune the model hyperparameters
     max_epochs = args.epochs # 8
