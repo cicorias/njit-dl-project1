@@ -119,6 +119,7 @@ class EWC(object):
 
         self.model.eval()
 
+        # TODO: how are we picking 0.1
         replay_examples = taskset_with_replay(self.scenario, self.task_id, 0.1)
 
         # overwrite taskset examples with previously seen examples
@@ -148,6 +149,7 @@ class EWC(object):
             _loss = self._precision_matrices[n] * (p - self._means[n]) ** 2
             loss += _loss.sum()
             num_params += 1
+        # TODO: why are we dividing by num_params? source just returns loss (ewc.pytorch - utils.py)
         return loss / num_params
 
 
@@ -178,6 +180,7 @@ def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, opt
             # Outputs batches of data, one scenario at a time
             x, y = x.cuda(), y.cuda()
             outputs = classifier(x)
+            # TODO: our ewc importance * penalty applied.
             loss = criterion(outputs, y) + importance * ewc.penalty(classifier)
             loss.backward()
             optimizer.step()
@@ -239,7 +242,6 @@ def main(args):
 
     # print args recap
     print2(args, end='\n\n')
-    print2('hello {}'.format('world'))
     
     # Load the core50 data
     # TODO: check the symbolic links as for me no '../' prefix needed.
@@ -360,6 +362,7 @@ def main(args):
         cum_accuracy = 0.0
         for val_task_id, val_taskset in enumerate(scenario_val):
 
+            # TODO: are we to add this back in?
             # Validate on all previously trained tasks (but not future tasks)
             # if val_task_id > task_id:
             #     break
@@ -368,7 +371,7 @@ def main(args):
 
             # Make sure we're validating the correct classes
             unq_cls_validate = np.unique(val_taskset._y)
-            print2(f"Validating classes: {unq_cls_validate}")
+            print2(f"Validating classes: {unq_cls_validate} -- val_task_id:{val_task_id}  task_id:{task_id}")
 
             total = 0.0
             correct = 0.0
@@ -399,6 +402,9 @@ def main(args):
     # TO DO Add EWC Training
 
     # Some plots over time
+    from pathlib import Path
+    Path('continuum/output').mkdir(parents=True, exist_ok=True)
+
     plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], accuracies, '-o', label="Naive")
     #plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], rehe_accs, '-o', label="Rehearsal")
     #plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], ewc_accs, '-o', label="EWC")
