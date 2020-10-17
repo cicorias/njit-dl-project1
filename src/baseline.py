@@ -59,7 +59,7 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
         train_total = 0.0
         train_correct = 0.0 
         for i, (x, y, t) in enumerate(train_loader):
-
+            start = time.time()
             # Outputs batches of data, one scenario at a time
             x, y = x.cuda(), y.cuda()
             outputs = classifier(x)
@@ -75,7 +75,8 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
             
             if i % 100 == 99:
                 avg_running_loss = running_loss / 3200
-                print2(f'[Mini-batch {i + 1}] avg loss: {avg_running_loss:.5f}')
+                print2(f'[Mini-batch {i + 1}] avg loss: {avg_running_loss:.5f} -- took {time.time() - start:.5f} seconds')
+                start = time.time()
                 # End early criterion
                 if avg_running_loss < convergence_criterion:
                     did_converge = True
@@ -297,10 +298,12 @@ def main(args):
     if torch.cuda.is_available():
         classifier.cuda()
 
-    # TODO: fix device specific cuda usage to we can parallel 
-    # if torch.cuda.device_count() > 1:
-    #     print2(f"Let's use {torch.cuda.device_count()} GPUs!")
-    #     classifier = nn.DataParallel(classifier)
+    # TODO: fix device specific cuda usage to we can parallel
+    # TODO: right now probably due to marshalling parallel taking slightly longer
+    # TODO: this parm is now default to false.
+    if args.use_parallel and torch.cuda.device_count() > 1:
+        print2(f"Let's use {torch.cuda.device_count()} GPUs!")
+        classifier = nn.DataParallel(classifier)
 
     # Tune the model hyperparameters
     max_epochs = args.epochs # 8
@@ -458,6 +461,8 @@ if __name__ == "__main__":
 
     parser.add_argument('--importance', type=int, default=0.1, help='EWC importance criterion')
 
+    parser.add_argument('--use_parallel', type=bool, default=False)
+
     import datetime
     temp_out_file = datetime.datetime.now().strftime('./%Y_%m_%d-%H_%M_%S') + '.txt'
     parser.add_argument('--outfile', type=str, default=temp_out_file)
@@ -468,7 +473,7 @@ if __name__ == "__main__":
     args.n_classes = 50
 
     args.cuda = torch.cuda.is_available()
-    args.device = 'cuda:0' if args.cuda else 'cpu'
+    args.device = 'cuda' if args.cuda else 'cpu'
 
     if args.cuda:
         print('cuda IS available')
