@@ -239,8 +239,17 @@ def main(args):
     
     # Load the core50 data
     # TODO: check the symbolic links as for me no '../' prefix needed.
-    core50 = Core50("core50/data/", train=True, download=False)
-    core50_val = Core50("core50/data", train=False, download=False)
+
+    if args.download:
+        print2('cli switch download set to True so download will occur...')
+        print2('  alternatively the batch script fetch_data_and_setup.sh can be used')
+
+    
+    print2('using directory for data_path path {}'.format(args.data_path))
+
+
+    core50 = Core50(args.data_path, train=True, download=args.download)
+    core50_val = Core50(args.data_path, train=False, download=args.download)
 
     # A new classes scenario, using continuum
     scenario = ClassIncremental(
@@ -393,6 +402,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser('Ted David Shawn - NJIT')
+
+    parser.add_argument('--data_path', type=str, default='core50/data/')
+
+    parser.add_argument('--download', type=bool, default=False)
 
     ### Use these command line args to set parameters for the model ###
 

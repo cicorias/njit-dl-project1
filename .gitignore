@@ -144,3 +144,8 @@ core50/data
 
 # no stdout files unless needed 
 2020_10*.txt
+
+.vscode/
+
+extract/
+run2/
