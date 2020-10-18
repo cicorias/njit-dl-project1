@@ -4,6 +4,7 @@
 import os
 import sys
 from contextlib import redirect_stdout
+from copy import deepcopy
 
 import argparse
 import matplotlib.pyplot as plt
@@ -16,11 +17,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.models as models
+from torch.autograd import Variable
 
 from continuum import ClassIncremental
 from continuum.datasets import Core50
 from continuum.tasks import split_train_val
 from torchvision.transforms.transforms import Normalize, ToTensor
+
 
 def redirect(text, path='./out.txt', *args, **kwargs):
     # first send to normal stdout.
@@ -47,6 +50,7 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
 
         # End if the loss has converged to criterion
         if did_converge:
+            print2(f'loss has converged to criterion ending: Epoch {epoch +1}')
             break
             
         print2(f"<------ Epoch {epoch + 1} ------->")
@@ -55,7 +59,7 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
         train_total = 0.0
         train_correct = 0.0 
         for i, (x, y, t) in enumerate(train_loader):
-
+            start = time.time()
             # Outputs batches of data, one scenario at a time
             x, y = x.cuda(), y.cuda()
             outputs = classifier(x)
@@ -71,26 +75,138 @@ def train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, c
             
             if i % 100 == 99:
                 avg_running_loss = running_loss / 3200
-                print2(f'[Mini-batch {i + 1}] avg loss: {avg_running_loss:.5f}')
+                print2(f'[Mini-batch {i + 1}] avg loss: {avg_running_loss:.5f} -- took {time.time() - start:.5f} seconds')
+                start = time.time()
                 # End early criterion
                 if avg_running_loss < convergence_criterion:
                     did_converge = True
+                    print2(f'!!! avg_running_loss < convergence_criterion - ending: Epoch {epoch +1}')
                     break
                 last_avg_running_loss = avg_running_loss
                 running_loss = 0.0
                         
-        print2(f"Training accuracy: {100.0 * train_correct / train_total}%")
+        print2(f"Training accuracy: {100.0 * train_correct / train_total:.5f}%")
     return
 
 
-def train_ewc(model, device, task_id, x_train, y_train, optimizer, epoch):
-    """
-    EWC Trainer
-    """
-    pass
+###### EWC Stuff ######
+
+def variable(t: torch.Tensor, use_cuda=True, **kwargs):
+    if torch.cuda.is_available() and use_cuda:
+        t = t.cuda()
+    return Variable(t, **kwargs)
+
+
+class EWC(object):
+    def __init__(self, model: nn.Module, dataset, scenario, task_id):
+
+        self.model = model
+        self.dataset = deepcopy(dataset)
+        self.scenario = scenario
+        self.task_id = task_id
+
+        self.params = {n: p for n, p in self.model.named_parameters() if p.requires_grad}
+        self._means = {}
+        self._precision_matrices = self._diag_fisher()
+
+        for n, p in deepcopy(self.params).items():
+            self._means[n] = variable(p.data)
+
+    def _diag_fisher(self):
+        precision_matrices = {}
+        for n, p in deepcopy(self.params).items():
+            p.data.zero_()
+            precision_matrices[n] = variable(p.data)
+
+        self.model.eval()
+
+        # TODO: how are we picking 0.1
+        replay_examples = taskset_with_replay(self.scenario, self.task_id, 0.1)
+
+        # overwrite taskset examples with previously seen examples
+        self.dataset._x = replay_examples['x']
+        self.dataset._y = replay_examples['y']
+        self.dataset._t = replay_examples['t']
+
+        ewc_loader = DataLoader(self.dataset, batch_size=1, shuffle=True)
+
+        for i, (x, y, t) in enumerate(ewc_loader):
+            x, y = x.cuda(), y.cuda()
+            outputs = self.model(x)
+            _, train_predicted = torch.max(outputs.data, 1)
+            loss = nn.functional.nll_loss(nn.functional.log_softmax(outputs, dim=1), train_predicted)
+            loss.backward()
+
+            for n, p in self.model.named_parameters():
+                precision_matrices[n].data += p.grad.data ** 2 / len(self.dataset._y)
+
+        precision_matrices = {n: p for n, p in precision_matrices.items()}
+        return precision_matrices
+
+    def penalty(self, model: nn.Module):
+        loss = 0
+        for n, p in model.named_parameters():
+            _loss = self._precision_matrices[n] * (p - self._means[n]) ** 2
+            loss += _loss.sum()
+        return loss
+
+
+def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, optimizer, max_epochs, convergence_criterion):
+    def print2(parms, *aargs, **kwargs):
+        redirect(parms, path=args.outfile, *aargs, **kwargs)
+
+    print2("=== Training with EWC ===")
+
+    # End early criterion
+    last_avg_running_loss = convergence_criterion #  TODO: not used currently
+    did_converge = False
+
+    for epoch in range(max_epochs):
+
+        # End if the loss has converged to criterion
+        if did_converge:
+            print2(f'loss has converged to criterion ending: Epoch {epoch +1}')
+            break
+            
+        print2(f"<------ Epoch {epoch + 1} ------->")
+
+        running_loss = 0.0
+        train_total = 0.0
+        train_correct = 0.0 
+        for i, (x, y, t) in enumerate(train_loader):
+
+            # Outputs batches of data, one scenario at a time
+            x, y = x.cuda(), y.cuda()
+            outputs = classifier(x)
+            # TODO: our ewc importance * penalty applied.
+            loss = criterion(outputs, y) + importance * ewc.penalty(classifier)
+            loss.backward()
+            optimizer.step()
+
+            # print training statistics
+            running_loss += loss.item()
+            train_total += y.size(0)
+            _, train_predicted = torch.max(outputs.data, 1)
+            train_correct += (train_predicted == y).sum().item()
+            
+            if i % 100 == 99:
+                avg_running_loss = running_loss / 3200
+                print2(f'[Mini-batch {i + 1}] avg loss: {avg_running_loss:.5f}')
+                # End early criterion
+                if avg_running_loss < convergence_criterion:
+                    did_converge = True
+                    print2(f'!!! avg_running_loss < convergence_criterion - ending: Epoch {epoch +1}')
+                    break
+                last_avg_running_loss = avg_running_loss
+                running_loss = 0.0
+                        
+        print2(f"Training accuracy: {100.0 * train_correct / train_total:.5f}%")
+    return
+
+###### END EWC STUFF ########
 
 # Continuous learning via Rehearsal 
-def taskset_with_replay(scenario, task_id, train_taskset, proportion):
+def taskset_with_replay(scenario, task_id, proportion):
     replay_examples = {
         'x': np.array([], dtype='<U49'),
         'y': np.array([], dtype='int64'),
@@ -113,41 +229,45 @@ def taskset_with_replay(scenario, task_id, train_taskset, proportion):
             replay_examples['t'], np.random.choice(prev_taskset._t, size=sz, replace=False)
         )
 
-        # Add replay examples to current taskset
-        train_taskset._x = np.append(train_taskset._x, replay_examples['x'])
-        train_taskset._y = np.append(train_taskset._y, replay_examples['y'])
-        train_taskset._t = np.append(train_taskset._t, replay_examples['t'])
-
-    return train_taskset
+    return replay_examples
 
 
 def main(args):
     def print2(parms, *aargs, **kwargs):
         redirect(parms, path=args.outfile, *aargs, **kwargs)
-    
 
     start_time = time.time()
 
     # print args recap
     print2(args, end='\n\n')
-    print2('hello {}'.format('world'))
     
     # Load the core50 data
     # TODO: check the symbolic links as for me no '../' prefix needed.
-    core50 = Core50("core50/data/", train=True, download=False)
-    core50_val = Core50("core50/data", train=False, download=False)
+
+    if args.download:
+        print2('cli switch download set to True so download will occur...')
+        print2('  alternatively the batch script fetch_data_and_setup.sh can be used')
+
+    
+    print2('using directory for data_path path {}'.format(args.data_path))
+
+
+    core50 = Core50(args.data_path, train=True, download=args.download)
+    core50_val = Core50(args.data_path, train=False, download=args.download)
 
     # A new classes scenario, using continuum
     scenario = ClassIncremental(
         core50,
         increment=5,
         initial_increment=10,
+        # following values come from the the mean and std of ImageNet - the basis of resnet.
         transformations=[ ToTensor(), Normalize([0.485, 0.456, 0.406],[0.229, 0.224, 0.225])]
     )
     scenario_val = ClassIncremental(
         core50_val,
         increment=5,
         initial_increment=10,
+        # following values come from the the mean and std of ImageNet - the basis of resnet.
         transformations=[ ToTensor(), Normalize([0.485, 0.456, 0.406],[0.229, 0.224, 0.225])]
     )
 
@@ -163,6 +283,10 @@ def main(args):
     elif args.classifier == 'resnet101':
         classifier = models.resnet101(pretrained=True)
         classifier.fc = nn.Linear(2048, args.n_classes)
+
+    elif args.classifier == 'resnet34':
+        classifier = models.resnet34(pretrained=True)
+        classifier.fc = nn.Linear(512, args.n_classes)
     
     else:
         raise Exception('no classifier picked')
@@ -170,6 +294,13 @@ def main(args):
     # Fix for RuntimeError: Input type (torch.cuda.FloatTensor) and weight type (torch.FloatTensor) should be the same
     if torch.cuda.is_available():
         classifier.cuda()
+
+    # TODO: fix device specific cuda usage to we can parallel
+    # TODO: right now probably due to marshalling parallel taking slightly longer
+    # TODO: this parm is now default to false.
+    if args.use_parallel and torch.cuda.device_count() > 1:
+        print2(f"Let's use {torch.cuda.device_count()} GPUs!")
+        classifier = nn.DataParallel(classifier)
 
     # Tune the model hyperparameters
     max_epochs = args.epochs # 8
@@ -199,7 +330,12 @@ def main(args):
 
         # Use replay if it's specified
         if args.replay:
-            train_taskset = taskset_with_replay(scenario, task_id, train_taskset, args.replay)
+
+            # Add replay examples to current taskset
+            replay_examples = taskset_with_replay(scenario, task_id, args.replay)
+            train_taskset._x = np.append(train_taskset._x, replay_examples['x'])
+            train_taskset._y = np.append(train_taskset._y, replay_examples['y'])
+            train_taskset._t = np.append(train_taskset._t, replay_examples['t'])
 
         train_loader = DataLoader(train_taskset, batch_size=32, shuffle=True)
         unq_cls_train = np.unique(train_taskset._y)
@@ -208,15 +344,30 @@ def main(args):
         print2(f"Training classes: {unq_cls_train}")
 
         # Train the model
-        train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
+        classifier.train()
+        if args.importance:
+            # EWC
+            if task_id == 0:
+                train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
+            else:
+                old_tasks = []
+                for prev_id, prev_taskset in enumerate(scenario):
+                    if prev_id == task_id:
+                        break
+                    else:
+                        old_tasks = old_tasks + list(prev_taskset._x)
+                train_ewc(classifier, task_id, train_loader, criterion, EWC(classifier, train_taskset, scenario, task_id), args.importance, optimizer, max_epochs, convergence_criterion)
+        else:
+            train(classifier, task_id, train_loader, criterion, optimizer, max_epochs, convergence_criterion)
 
-        print2("Finished Training")
+        print2("=== Finished Training ===")
         classifier.eval()
 
         # Validate against separate validation data
         cum_accuracy = 0.0
         for val_task_id, val_taskset in enumerate(scenario_val):
 
+            # TODO: are we to add this back in?
             # Validate on all previously trained tasks (but not future tasks)
             # if val_task_id > task_id:
             #     break
@@ -225,7 +376,7 @@ def main(args):
 
             # Make sure we're validating the correct classes
             unq_cls_validate = np.unique(val_taskset._y)
-            print2(f"Validating classes: {unq_cls_validate}")
+            print2(f"Validating classes: {unq_cls_validate} -- val_task_id:{val_task_id}  task_id:{task_id}")
 
             total = 0.0
             correct = 0.0
@@ -240,14 +391,15 @@ def main(args):
                     correct += (predicted == y).sum().item()
             
             print2(f"Classes predicted: {pred_classes}")
-            print2(f"Validation Accuracy: {100.0 * correct / total}%")
+            print2(f"=== Validation Accuracy: {100.0 * correct / total}%\n")
             cum_accuracy += (correct / total)
         
-        print2(f"Average Accuracy: {cum_accuracy / 9}")
+        avg_accuracy = cum_accuracy / 9
+        print2(f"Average Accuracy: {100.0 * avg_accuracy:.5f}%  [{avg_accuracy:.5f}]")
         accuracies.append((cum_accuracy / 9))   
-        print2(f"Average Accuracy: {100.0 * cum_accuracy / 9.0}%")
+        # print2(f"Average Accuracy: {100.0 * cum_accuracy / 9.0}%")
 
-        classifier.train()
+        
     
     # Running Time
     print2("--- %s seconds ---" % (time.time() - start_time))
@@ -255,6 +407,9 @@ def main(args):
     # TO DO Add EWC Training
 
     # Some plots over time
+    from pathlib import Path
+    Path('continuum/output').mkdir(parents=True, exist_ok=True)
+
     plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], accuracies, '-o', label="Naive")
     #plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], rehe_accs, '-o', label="Rehearsal")
     #plt.plot([1, 2, 3, 4, 5, 6, 7, 8, 9], ewc_accs, '-o', label="EWC")
@@ -270,11 +425,15 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser('Ted David Shawn - NJIT')
 
+    parser.add_argument('--data_path', type=str, default='core50/data/')
+
+    parser.add_argument('--download', type=bool, default=False)
+
     ### Use these command line args to set parameters for the model ###
 
     # Model
     parser.add_argument('-cls', '--classifier', type=str, default='resnet18',
-                        choices=['resnet18', 'resnet101'])
+                        choices=['resnet18', 'resnet101', 'resnet34'])
 
     # Optimization
     parser.add_argument('--lr', type=float, default=0.00001,
@@ -283,7 +442,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=32,
                         help='batch_size')
 
-    parser.add_argument('--epochs', type=int, default=4,
+    parser.add_argument('--epochs', type=int, default=1,
                         help='number of epochs')
 
     parser.add_argument('--weight_decay', type=float, default=0.000001,
@@ -295,7 +454,16 @@ if __name__ == "__main__":
     parser.add_argument('--momentum', type=float, default=0.8,
                         help='momentum')
 
-    parser.add_argument('--replay', type=float, default=0.15, help='proportion of training to replay')
+    #### Continual Learning
+
+    # Rehearsal - keep a proportion of the previous tasks to replay to the classifier
+    parser.add_argument('--replay', type=float, default=0.0, help='proportion of training to replay')
+
+    # Elastic Weight Consolidation - add a penalty to "important" weights in training prior classes
+    parser.add_argument('--importance', type=int, default=0.1, help='EWC importance criterion')
+
+    # Process in parallel
+    parser.add_argument('--use_parallel', type=bool, default=False)
 
     import datetime
     temp_out_file = datetime.datetime.now().strftime('./%Y_%m_%d-%H_%M_%S') + '.txt'
@@ -307,7 +475,7 @@ if __name__ == "__main__":
     args.n_classes = 50
 
     args.cuda = torch.cuda.is_available()
-    args.device = 'cuda:0' if args.cuda else 'cpu'
+    args.device = 'cuda' if args.cuda else 'cpu'
 
     if args.cuda:
         print('cuda IS available')

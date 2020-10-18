@@ -10,14 +10,14 @@ echo "Downloading Core50 dataset (train/validation set)..."
 # wget --directory-prefix=$DIR'/core50/data/' http://bias.csr.unibo.it/maltoni/download/core50/core50_128x128.zip
 curl -o $DIR'/core50/data/core50_128x128.zip' --url http://bias.csr.unibo.it/maltoni/download/core50/core50_128x128.zip
 
-# wget --directory-prefix=$DIR'/core50/data/' http://bias.csr.unibo.it/maltoni/download/core50/core50_imgs.npz
-curl -o $DIR'/core50/data/core50_imgs.npz' --url http://bias.csr.unibo.it/maltoni/download/core50/core50_imgs.npz
+# wget --directory-prefix=$DIR'/core50/data/' http://bias.csr.unibo.it/maltoni/download/core50/core50_imgs.npz#
+# curl -o $DIR'/core50/data/core50_imgs.npz' --url http://bias.csr.unibo.it/maltoni/download/core50/core50_imgs.npz
 
-echo "Downloading challenge test set..."
+#echo "Downloading challenge test set..."
 # wget --directory-prefix=$DIR'/core50/data/' http://bias.csr.unibo.it/maltoni/download/core50/core50_challenge_test.zip
-curl -o $DIR'/core50/data/core50_challenge_test.zip' http://bias.csr.unibo.it/maltoni/download/core50/core50_challenge_test.zip
+#curl -o $DIR'/core50/data/core50_challenge_test.zip' http://bias.csr.unibo.it/maltoni/download/core50/core50_challenge_test.zip
 echo "Unzipping data..."
 unzip $DIR/core50/data/core50_128x128.zip -d $DIR/core50/data/
-unzip $DIR/core50/data/core50_challenge_test.zip -d $DIR/core50/data/
+#unzip $DIR/core50/data/core50_challenge_test.zip -d $DIR/core50/data/
 
 # mv $DIR/core50/data/core50_128x128/* $DIR/core50/data/
