@@ -459,7 +459,7 @@ if __name__ == "__main__":
     parser.add_argument('--replay', type=float, default=0.0, help='proportion of training to replay')
 
     # Elastic Weight Consolidation - add a penalty to "important" weights in training prior classes
-    parser.add_argument('--importance', type=int, default=0.1, help='EWC importance criterion')
+    parser.add_argument('--importance', type=int, default=0.0, help='EWC importance criterion')
 
     # Process in parallel
     parser.add_argument('--use_parallel', type=bool, default=False)
