@@ -14,7 +14,16 @@ conda env create -n <YOUR ENVIRONMENT NAME> --file ./environment.yaml
 ## HOW TO RUN
 Call src/baseline.py from the command line:
 
-`python ./src/baseline.py --data_path ./data --download True`
+>Note: You **Must** activate the Conda environment that you just created.
+
+```bash
+conda activate <YOUR ENVIRONMENT NAME>
+
+# This runs the scenarios.
+python ./src/baseline.py --data_path ./data --download True
+
+```
+
 
 This will run a new-classes scenario on the the Core50 dataset, with the pretrained ResNet18 model by default. Parameters defined below.
 
