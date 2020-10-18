@@ -3,21 +3,45 @@
 
 ### Ted Moore, David Apolinar, Shawn Cicoria
 
+## Setup
+For this solution Anaconda was used.  You need to install and then run an environment setup using:
+
+```bash
+conda env create -n <YOUR ENVIRONMENT NAME> --file ./environment.yaml
+```
+
+
 ## HOW TO RUN
 Call src/baseline.py from the command line:
 
-`python ./src/baseline.py`
+`python ./src/baseline.py --data_path ./data --download True`
 
 This will run a new-classes scenario on the the Core50 dataset, with the pretrained ResNet18 model by default. Parameters defined below.
 
-### The script assumes you have the following directory structure:
+### The script creates the data path
 
-1) A folder, named `core50/` at the same level as `src/`, which contains the default downloaded output of Continuum's Core50 data class. 
-`Core50("/core50/", train=True, download=True)`
+1) The above command creates a local path `./data` that contains the downloaded `core50_128x128.zip` file **VERY LARGE** and then expands the file to the `./data/core50_128x128` path. The full size of the zip and extracted contents is **12+ Gigabytes**
+
+>Note: You must have enough disk space to accomodate the full core50 data set that is downloaded and extracted -- **12+ Gigabytes**
 
 2) A file, `core50_train.csv` which includes the image paths of the data you wish to use for training the algorithm. The rest of the images will be witheld for validation.
 
 ### Available CLI arguments:
+
+```
+usage: ./src/baseline.py  [-h] [--data_path DATA_PATH]
+                              [--download DOWNLOAD]
+                              [-cls {resnet18,resnet101,resnet34}] [--lr LR]
+                              [--batch_size BATCH_SIZE] [--epochs EPOCHS]
+                              [--weight_decay WEIGHT_DECAY]
+                              [--convergence_criterion CONVERGENCE_CRITERION]
+                              [--momentum MOMENTUM] [--replay REPLAY]
+                              [--importance IMPORTANCE]
+                              [--use_parallel USE_PARALLEL]
+                              [--outfile OUTFILE]
+```
+
+#### Some of the settings and their defaults.
 
 > '-cls', '--classifier', type=str, default='resnet18', choices=['resnet18', 'resnet101']
 
@@ -35,7 +59,7 @@ This will run a new-classes scenario on the the Core50 dataset, with the pretrai
 
 > '--replay', type=float, default=0.15, help='proportion of training examples to replay'
 
-Of course, the script is made publicly available, so further modifications (e.g. different classifiers, or a New Instances scenario) can easily be implemented.
+Of course, the script is made publicly available, so further modifications (e.g. different classifiers, or a New Instances scenario) can easily be implemented -- pull requests are welcome.
 
 ### On Continuous Learning
 
