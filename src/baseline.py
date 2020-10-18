@@ -145,13 +145,10 @@ class EWC(object):
 
     def penalty(self, model: nn.Module):
         loss = 0
-        num_params = 0
         for n, p in model.named_parameters():
             _loss = self._precision_matrices[n] * (p - self._means[n]) ** 2
             loss += _loss.sum()
-            num_params += 1
-        # TODO: why are we dividing by num_params? source just returns loss (ewc.pytorch - utils.py)
-        return loss / num_params
+        return loss
 
 
 def train_ewc(classifier, task_id, train_loader, criterion, ewc, importance, optimizer, max_epochs, convergence_criterion):
@@ -457,10 +454,15 @@ if __name__ == "__main__":
     parser.add_argument('--momentum', type=float, default=0.8,
                         help='momentum')
 
+    #### Continual Learning
+
+    # Rehearsal - keep a proportion of the previous tasks to replay to the classifier
     parser.add_argument('--replay', type=float, default=0.0, help='proportion of training to replay')
 
+    # Elastic Weight Consolidation - add a penalty to "important" weights in training prior classes
     parser.add_argument('--importance', type=int, default=0.1, help='EWC importance criterion')
 
+    # Process in parallel
     parser.add_argument('--use_parallel', type=bool, default=False)
 
     import datetime
