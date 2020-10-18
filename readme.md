@@ -74,4 +74,8 @@ Of course, the script is made publicly available, so further modifications (e.g.
 
 ### On Continuous Learning
 
-The currently implemented approach to continuous learning is in the form of Rehearsal, where a proportion of the previous tasks' training examples are selected at random and appended to the current task training examples. This can theoretically help a model not "forget" previous examples, by interspersing them with the current task. This approach has its shortcomings, including additional training time and required memory, but can be useful in conjunction with other methods.
+The currently implemented approach to continuous learning is in the form of Rehearsal, where a proportion of the previous tasks' training examples are selected at random and appended to the current task training examples. This can theoretically help a model not "forget" previous examples, by interspersing them with the current task. This approach has its shortcomings, including additional training time and required memory, but can be useful in conjunction with other methods. The proportion of prior tasks can be set with the `--replay` argument.
+
+There is also the skeleton implementation of EWC, but it is still a *work in progress* and should be used cautiously. The `--importance` argument will turn this on, and is the coefficient for the penalty term. 
+
+
