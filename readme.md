@@ -43,7 +43,7 @@ usage: ./src/baseline.py  [-h] [--data_path DATA_PATH]
 
 #### Some of the settings and their defaults.
 
-> '-cls', '--classifier', type=str, default='resnet18', choices=['resnet18', 'resnet101']
+> '-cls', '--classifier', type=str, default='resnet18', choices=['resnet18', 'resnet101', 'resnet34']
 
 > '--lr', type=float, default=0.00001, help='learning rate'
 
@@ -57,7 +57,9 @@ usage: ./src/baseline.py  [-h] [--data_path DATA_PATH]
 
 > '--momentum', type=float, default=0.8, help='momentum'
 
-> '--replay', type=float, default=0.15, help='proportion of training examples to replay'
+> '--replay', type=float, default=0.0, help='proportion of training examples to replay'
+
+> '--importance', type=int, default=0.0, help='EWC importance criterion'
 
 Of course, the script is made publicly available, so further modifications (e.g. different classifiers, or a New Instances scenario) can easily be implemented -- pull requests are welcome.
 
