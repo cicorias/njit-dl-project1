@@ -367,10 +367,9 @@ def main(args):
         cum_accuracy = 0.0
         for val_task_id, val_taskset in enumerate(scenario_val):
 
-            # TODO: are we to add this back in?
             # Validate on all previously trained tasks (but not future tasks)
-            # if val_task_id > task_id:
-            #     break
+            if val_task_id > task_id:
+                break
 
             val_loader = DataLoader(val_taskset, batch_size=32, shuffle=True)
 
