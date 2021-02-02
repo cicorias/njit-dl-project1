@@ -57,7 +57,7 @@ colorama==0.4.3
 configparser==3.7.4
 contextlib2==0.6.0.post1
 continuum==1.0.2
-cryptography==2.8
+cryptography==3.2
 cycler==0.10.0
 Cython==0.29.13
 decorator==4.4.1
