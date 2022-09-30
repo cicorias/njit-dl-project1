@@ -100,7 +100,7 @@ jedi==0.15.1
 jeepney==0.4.1
 Jinja2==2.10.3
 jmespath==0.9.4
-joblib==0.13.2
+joblib==1.2.0
 json-logging-py==0.2
 JsonForm==0.0.2
 jsonpickle==1.2
